@@ -1,0 +1,8 @@
+anthropic
+google-genai
+streamlit
+python-dotenv
+Pillow
+Jinja2
+playwright
+pandas

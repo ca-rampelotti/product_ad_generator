@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/streamlit run:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(.venv/bin/python -c \"import streamlit; print\\('streamlit', streamlit.__version__\\)\" 2>&1)",
+      "Bash(pkill -f \"streamlit run ui/app.py\")"
+    ]
+  }
+}

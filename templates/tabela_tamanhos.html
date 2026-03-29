@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1200">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 1200px;
+      height: 1200px;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+    }
+
+    .container {
+      width: 960px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 52px;
+    }
+
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    h1 {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 800;
+      font-size: 54px;
+      letter-spacing: 6px;
+      color: #1a1a1a;
+      text-align: center;
+    }
+
+    .accent-line {
+      width: 72px;
+      height: 4px;
+      background: #6b1e35;
+      border-radius: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 26px;
+      border: 1px solid #e0e0e0;
+    }
+
+    thead tr {
+      background: #6b1e35;
+    }
+
+    thead th {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      color: #ffffff;
+      padding: 20px 28px;
+      text-align: center;
+      letter-spacing: 1px;
+      border: 1px solid #5a1a2d;
+    }
+
+    tbody tr:nth-child(odd) {
+      background: #ffffff;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f7f7f7;
+    }
+
+    tbody td {
+      font-weight: 500;
+      color: #2d2d2d;
+      padding: 18px 28px;
+      text-align: center;
+      border: 1px solid #e0e0e0;
+    }
+
+    .footnote {
+      font-size: 19px;
+      color: #aaaaaa;
+      text-align: center;
+      margin-top: -20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>GUIA DE TAMANHOS</h1>
+      <div class="accent-line"></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          {% for col in colunas %}
+          <th>{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for linha in linhas %}
+        <tr>
+          {% for valor in linha %}
+          <td>{{ valor }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="footnote">* Medidas podem variar ±2cm</p>
+  </div>
+</body>
+</html>
