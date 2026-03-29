@@ -85,7 +85,7 @@ Siga rigorosamente as regras do system prompt e responda apenas com as tags XML.
             return {"raw": raw}
 
         esportes = [e.strip() for e in esportes_raw.split(",") if e.strip()]
-        skus = [s.strip() for s in skus_raw.split("\n") if s.strip()]
+        skus = [s.strip() for s in skus_raw.replace("\\n", "\n").split("\n") if s.strip()]
         estilos = [e.strip() for e in estilos_raw.split(",") if e.strip()] if estilos_raw else []
 
         return {
@@ -93,7 +93,7 @@ Siga rigorosamente as regras do system prompt e responda apenas com as tags XML.
             "palavras_chave": palavras_chave,
             "modelo_keywords": modelo,
             "esportes_recomendados": esportes,
-            "descricao": descricao,
+            "descricao": descricao.replace("\\n", "\n"),
             "skus": skus,
             "tipo_manga": tipo_manga,
             "tipo_gola": tipo_gola,

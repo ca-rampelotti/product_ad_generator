@@ -84,8 +84,8 @@ Siga rigorosamente as regras do system prompt e responda apenas com as tags XML.
         return {
             "nome": nome,
             "categoria": categoria,
-            "descricao": descricao,
-            "skus": [s.strip() for s in skus_raw.split("\n") if s.strip()],
+            "descricao": descricao.replace("\\n", "\n"),
+            "skus": [s.strip() for s in skus_raw.replace("\\n", "\n").split("\n") if s.strip()],
             "estacoes": estacoes,
             "estilo": [e.strip() for e in estilo_raw.split(",") if e.strip()],
             "comprimento_superior": comprimento_superior,
