@@ -82,7 +82,7 @@ st.title("Gerador de Anúncios")
 # ── Session state ──
 for key, default in [
     ("inputs", {}),
-    ("imagens_b64", []),
+    ("imagens_por_cor", {}),
     ("marketplaces", []),
     ("gen_running", False),
     ("listing", {}),
@@ -312,7 +312,7 @@ def _show_variations(listing: dict, inputs: dict) -> None:
                                     try:
                                         new_path = generate_image(
                                             prompts[slot],
-                                            st.session_state.imagens_b64,
+                                            st.session_state.imagens_por_cor.get(color_key, []),
                                             out,
                                         )
                                         if slot == "objecao" and new_path:
@@ -439,7 +439,7 @@ def _show_variations(listing: dict, inputs: dict) -> None:
 def _run_full_pipeline(
     product_data: dict,
     marketplaces: list[str],
-    imagens_b64: list[str],
+    imagens_por_cor: dict[str, list[str]],
     cores_list: list[str],
     tabela_b64: str | None,
 ) -> None:
@@ -456,10 +456,11 @@ def _run_full_pipeline(
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         _LISTING_KEYS = {"tipo_peca", "genero", "material", "desenho_tecido", "cores", "tamanhos", "sku_base", "preco_original", "preco_desconto"}
+        todas_imagens = [img for imgs in imagens_por_cor.values() for img in imgs]
         future_listing = executor.submit(
             ListingPipeline().run,
             marketplaces=marketplaces,
-            imagens=imagens_b64,
+            imagens=todas_imagens,
             **{k: v for k, v in product_data.items() if k in _LISTING_KEYS},
         )
         future_table = None
@@ -492,7 +493,7 @@ def _run_full_pipeline(
         return
 
     # ── FASE 2: Prompts de imagem por cor ──
-    if not imagens_b64:
+    if not any(imagens_por_cor.values()):
         with status:
             st.write("Sem imagens de referência — pulando geração de imagens.")
         status.update(label="Concluído (sem imagens)", state="complete", expanded=False)
@@ -516,7 +517,7 @@ def _run_full_pipeline(
 
         prompts_result = agent.run({
             **product_data,
-            "imagens": imagens_b64,
+            "imagens": imagens_por_cor.get(color, []),
             "color": color,
             "titulo": listing_titulo,
             "descricao": listing_descricao,
@@ -550,7 +551,7 @@ def _run_full_pipeline(
             for color_key, slot, prompts in tasks:
                 safe_color = color_key.replace(" ", "_")
                 output_path = os.path.join(OUTPUT_DIR, f"{safe_color}_{slot}.png")
-                future = executor.submit(generate_image, prompts[slot], imagens_b64, output_path)
+                future = executor.submit(generate_image, prompts[slot], imagens_por_cor.get(color_key, []), output_path)
                 future_map[future] = (color_key, slot, prompts, output_path)
 
             for future in as_completed(future_map):
@@ -672,17 +673,18 @@ with tab_simple:
     cores_selecionadas = st.multiselect("Cores disponíveis", options=CORES_OPCOES, help="Uma variação de imagens + SKUs será gerada para cada cor")
     cores = ", ".join(cores_selecionadas)
 
-    imagens_upload = st.file_uploader(
-        "Imagens do produto",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-        help=(
-            "Envie fotos do produto:\n"
-            "• 1 foto de frente\n"
-            "• 1 foto de lado\n"
-            "• 1 foto por cor disponível"
-        ),
-    )
+    if cores_selecionadas:
+        st.caption("Envie as imagens de referência para cada cor — o modelo seguirá a coloração exata")
+        imagens_upload_por_cor: dict[str, list] = {}
+        for _cor in cores_selecionadas:
+            imagens_upload_por_cor[_cor] = st.file_uploader(
+                f"Imagens — {_cor.capitalize()}",
+                type=["png", "jpg", "jpeg"],
+                accept_multiple_files=True,
+                key=f"img_upload_{_cor}",
+            ) or []
+    else:
+        imagens_upload_por_cor = {}
 
     # ── Estilo das Imagens ──
     _section_header("Estilo das Imagens")
@@ -753,9 +755,10 @@ with tab_simple:
         st.session_state.size_table_data = None
         st.session_state.size_table_image = None
 
-        imagens_b64: list[str] = [
-            base64.b64encode(f.read()).decode("utf-8") for f in (imagens_upload or [])
-        ]
+        imagens_por_cor: dict[str, list[str]] = {
+            cor: [base64.b64encode(f.read()).decode("utf-8") for f in arquivos]
+            for cor, arquivos in imagens_upload_por_cor.items()
+        }
         simple_product_data = {
             **product_data,
             "cores": cores,
@@ -771,11 +774,11 @@ with tab_simple:
 
         cores_list = [c.strip() for c in cores.split(",") if c.strip()] or [""]
 
-        st.session_state.imagens_b64 = imagens_b64
+        st.session_state.imagens_por_cor = imagens_por_cor
         st.session_state.marketplaces = marketplaces
         st.session_state.inputs = simple_product_data
 
-        _run_full_pipeline(simple_product_data, marketplaces, imagens_b64, cores_list, tabela_b64)
+        _run_full_pipeline(simple_product_data, marketplaces, imagens_por_cor, cores_list, tabela_b64)
 
         st.session_state.gen_running = False
         st.rerun()
@@ -800,7 +803,7 @@ with tab_simple:
             result_tab_names.append("Shopee")
         if st.session_state.generated_images or st.session_state.image_errors:
             result_tab_names.append("Variações")
-        elif st.session_state.imagens_b64:
+        elif any(st.session_state.imagens_por_cor.values()):
             result_tab_names.append("Variações")
 
         if result_tab_names:
