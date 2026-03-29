@@ -1,0 +1,16 @@
+# Secrets — nunca commitar
+.env
+.streamlit/secrets.toml
+
+# Imagens geradas (temporárias)
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
