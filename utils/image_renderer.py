@@ -55,10 +55,10 @@ def render_html_to_image(
     img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    title_font = _load_font(54)
-    header_font = _load_font(28)
-    cell_font = _load_font(26)
-    footnote_font = _load_font(19)
+    title_font = _load_font(72)
+    header_font = _load_font(44)
+    cell_font = _load_font(40)
+    footnote_font = _load_font(28)
 
     # Title
     title = "GUIA DE TAMANHOS"
@@ -87,8 +87,8 @@ def render_html_to_image(
     table_w = width - 2 * margin_x
     num_cols = len(headers)
     col_w = table_w // num_cols
-    header_h = 72
-    row_h = 66
+    header_h = 100
+    row_h = 88
     table_y = accent_y + 52
 
     # Header row
