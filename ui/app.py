@@ -455,11 +455,12 @@ def _run_full_pipeline(
     size_table_result = None
 
     with ThreadPoolExecutor(max_workers=2) as executor:
+        _LISTING_KEYS = {"tipo_peca", "genero", "material", "desenho_tecido", "cores", "tamanhos", "sku_base", "preco_original", "preco_desconto"}
         future_listing = executor.submit(
             ListingPipeline().run,
             marketplaces=marketplaces,
             imagens=imagens_b64,
-            **product_data,
+            **{k: v for k, v in product_data.items() if k in _LISTING_KEYS},
         )
         future_table = None
         if tabela_b64:
