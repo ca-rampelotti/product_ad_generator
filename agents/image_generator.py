@@ -106,20 +106,18 @@ class ImageGeneratorAgent(BaseAgent):
 
     def _build_prompt(self, input_data: dict) -> str:
         gender_en = GENDER_MAP.get(input_data.get("genero", "Feminino"), "female")
-        color = input_data.get("color", input_data.get("cores", ""))
         descricao_snippet = (input_data.get("descricao", "") or "")[:200]
-        return f"""Analyze the product images provided and generate 4 distinct professional marketing photo prompts plus 4 benefit bullets for the color: {color}.
+        return f"""Analyze the reference images provided and generate 4 distinct professional marketing photo prompts plus 4 benefit bullets.
 
 Product details:
 - Type: {input_data.get("tipo_peca", "")}
-- Color for this set: {color}
 - Material: {input_data.get("material", "")}
 - Fabric design: {input_data.get("desenho_tecido", "")}
 - Model gender: {gender_en}
 - Listing title: {input_data.get("titulo", "")}
 - Description excerpt: {descricao_snippet}
 
-Use the reference images to understand the garment shape, cut, and fabric — but always render the garment in the color specified above ({color})."""
+The garment color and shade must match exactly what is shown in the reference images. Do not describe or name the color — reproduce it as-is from the images."""
 
     def _call_llm(self, prompt: str) -> str:
         content_parts: list[dict] = []
