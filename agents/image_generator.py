@@ -11,7 +11,8 @@ Rules for every image prompt:
 - Never include text, lettering, watermarks, or logos in the image
 - Always end with: product photography, e-commerce, high quality, 1:1 square format, 1200x1200
 - Describe the garment accurately based on the reference images (cut, style, fabric texture)
-- Always use the exact color specified in the input for the garment color
+- THE GARMENT COLOR IS THE MOST IMPORTANT RULE: you MUST render the garment in the EXACT color given in the input. No variations, no interpretation. If the color is "preto", the garment is BLACK. If "branco", WHITE. If "vermelho", RED. This overrides anything in the reference images.
+- Start EVERY prompt with: "COLOR: [exact color in English] garment — " followed by the rest of the description
 - Specify lighting, background, and composition clearly
 - Specify the model gender as given in the input
 
@@ -142,12 +143,25 @@ Use the reference images to understand the garment shape, cut, and fabric — bu
             system=_build_system_prompt(self._input_data),
         )
 
+    _COLOR_PT_TO_EN = {
+        "branco": "white", "preto": "black", "vermelho": "red",
+        "caramelo": "caramel brown", "marrom": "brown", "rosa": "pink",
+        "amarelo": "yellow", "verde": "green", "azul": "blue", "bordo": "burgundy",
+    }
+
     def _parse_output(self, raw: str) -> dict:
         slots = ["capa", "detalhe", "lifestyle", "objecao"]
         parsed = {slot: _extract_tag(raw, slot) for slot in slots}
 
         if not all(parsed.values()):
             return {"raw": raw}
+
+        color_pt = self._input_data.get("color", self._input_data.get("cores", "")).lower().strip()
+        color_en = self._COLOR_PT_TO_EN.get(color_pt, color_pt)
+        if color_en:
+            prefix = f"STRICT COLOR REQUIREMENT: the garment MUST be {color_en} colored, exact shade, no exceptions. "
+            for slot in slots:
+                parsed[slot] = prefix + parsed[slot]
 
         for i in range(1, 5):
             parsed[f"bullet{i}"] = _extract_tag(raw, f"bullet{i}") or ""

@@ -47,7 +47,7 @@ def overlay_objection_text(image_path: str, bullets: list[str], output_path: str
     img = Image.open(image_path).convert("RGBA")
     w, h = img.size
 
-    band_height = int(h * 0.44)
+    band_height = int(h * 0.48)
     band_top = h - band_height
 
     # Gradient overlay
@@ -58,7 +58,7 @@ def overlay_objection_text(image_path: str, bullets: list[str], output_path: str
     accent = _accent_line(w, max(3, int(h * 0.003)))
     img.paste(accent, (0, band_top), accent)
 
-    font_size = max(38, int(w / 22))
+    font_size = max(52, int(w / 15))
     font = _load_font(font_size)
     check_font = _load_font(int(font_size * 1.15))
 
