@@ -202,7 +202,8 @@ def _create_size_grid(
     for size in tamanhos:
         measure_attrs = []
         for attr_id, fallback in measure_specs:
-            value = user_values[attr_id].get(size) or fallback.get(size, 48)
+            user_val = user_values[attr_id].get(size)
+            value = user_val if user_val is not None else fallback.get(size, 48)
             measure_attrs.append({"id": attr_id, "values": [
                 {"name": f"{value} cm", "struct": {"number": value, "unit": "cm"}}
             ]})

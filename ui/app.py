@@ -29,7 +29,7 @@ except Exception:
     pass  # fallback: config.py lê do .env local via python-dotenv
 
 from agents.image_generator import ImageGeneratorAgent
-from agents.ml_publisher import MLPublisherAgent
+from agents.ml_publisher import MLPublisherAgent, _CHEST as _ML_CHEST, _HIP as _ML_HIP
 from config import ML_APP_ID, ML_SECRET_KEY, ML_REDIRECT_URI
 from pipelines.kit_pipeline import KitPipeline, KIT_SLOT_LABELS
 from pipelines.listing_pipeline import ListingPipeline
@@ -577,9 +577,6 @@ def _show_ml_publish_tab(listing, inputs: dict) -> None:
 
     # ── Medidas por tamanho (grade de medição para size grid ML) ──
     # LEGGINGS/SKIRTS → só quadril | BLOUSES/T_SHIRTS → só busto | DRESSES → ambos
-    _DEFAULT_BUSTO   = {"PP": 40, "P": 44, "M": 48, "G": 52, "GG": 56, "XGG": 60}
-    _DEFAULT_QUADRIL = {"PP": 82, "P": 86, "M": 90, "G": 94, "GG": 98, "XGG": 102}
-
     _section_header("Medidas para Grade de Tamanhos")
     st.caption("Preencha as medidas usadas na grade de tamanhos do ML. O sistema usa os campos corretos automaticamente de acordo com o domínio detectado pelo título.")
 
@@ -591,7 +588,7 @@ def _show_ml_publish_tab(listing, inputs: dict) -> None:
             st.markdown("**Busto / Peito (cm)**")
             busto_df = pd.DataFrame({
                 "Tamanho": tamanhos_list,
-                "cm": [_DEFAULT_BUSTO.get(t, 48) for t in tamanhos_list],
+                "cm": [_ML_CHEST.get(t, 48) for t in tamanhos_list],
             })
             edited_busto = st.data_editor(
                 busto_df, key="ml_pub_medidas_busto", use_container_width=True,
@@ -604,7 +601,7 @@ def _show_ml_publish_tab(listing, inputs: dict) -> None:
             st.markdown("**Quadril (cm)**")
             quadril_df = pd.DataFrame({
                 "Tamanho": tamanhos_list,
-                "cm": [_DEFAULT_QUADRIL.get(t, 90) for t in tamanhos_list],
+                "cm": [_ML_HIP.get(t, 90) for t in tamanhos_list],
             })
             edited_quadril = st.data_editor(
                 quadril_df, key="ml_pub_medidas_quadril", use_container_width=True,
