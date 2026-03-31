@@ -575,6 +575,44 @@ def _show_ml_publish_tab(listing, inputs: dict) -> None:
         )
         estoque_dict = {}
 
+    # ── Medidas por tamanho (grade de medição para size grid ML) ──
+    # LEGGINGS/SKIRTS → só quadril | BLOUSES/T_SHIRTS → só busto | DRESSES → ambos
+    _DEFAULT_BUSTO   = {"PP": 40, "P": 44, "M": 48, "G": 52, "GG": 56, "XGG": 60}
+    _DEFAULT_QUADRIL = {"PP": 82, "P": 86, "M": 90, "G": 94, "GG": 98, "XGG": 102}
+
+    _section_header("Medidas para Grade de Tamanhos")
+    st.caption("Preencha as medidas usadas na grade de tamanhos do ML. O sistema usa os campos corretos automaticamente de acordo com o domínio detectado pelo título.")
+
+    medidas_busto: dict[str, int] = {}
+    medidas_quadril: dict[str, int] = {}
+    if tamanhos_list:
+        col_busto, col_quadril = st.columns(2)
+        with col_busto:
+            st.markdown("**Busto / Peito (cm)**")
+            busto_df = pd.DataFrame({
+                "Tamanho": tamanhos_list,
+                "cm": [_DEFAULT_BUSTO.get(t, 48) for t in tamanhos_list],
+            })
+            edited_busto = st.data_editor(
+                busto_df, key="ml_pub_medidas_busto", use_container_width=True,
+                hide_index=True, disabled=["Tamanho"],
+                column_config={"cm": st.column_config.NumberColumn("cm", min_value=20, max_value=200, step=1)},
+            )
+            medidas_busto = {row["Tamanho"]: int(row["cm"]) for _, row in edited_busto.iterrows()}
+
+        with col_quadril:
+            st.markdown("**Quadril (cm)**")
+            quadril_df = pd.DataFrame({
+                "Tamanho": tamanhos_list,
+                "cm": [_DEFAULT_QUADRIL.get(t, 90) for t in tamanhos_list],
+            })
+            edited_quadril = st.data_editor(
+                quadril_df, key="ml_pub_medidas_quadril", use_container_width=True,
+                hide_index=True, disabled=["Tamanho"],
+                column_config={"cm": st.column_config.NumberColumn("cm", min_value=20, max_value=200, step=1)},
+            )
+            medidas_quadril = {row["Tamanho"]: int(row["cm"]) for _, row in edited_quadril.iterrows()}
+
     # Montar image_paths_by_color a partir do session_state
     generated = st.session_state.generated_images  # {color: {slot: path}}
     image_paths_by_color: dict[str, list[str]] = {}
@@ -628,6 +666,8 @@ def _show_ml_publish_tab(listing, inputs: dict) -> None:
                     "listing_type": listing_type,
                     "estoque_por_variacao": estoque_input,
                     "modelo": getattr(listing, "modelo", inputs.get("tipo_peca", "")),
+                    "medidas_busto": medidas_busto,
+                    "medidas_quadril": medidas_quadril,
                 })
 
                 st.write(f"✓ Anúncio criado: {result['item_id']}")

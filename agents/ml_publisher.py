@@ -8,8 +8,20 @@ from utils.ml_api import ml_get, ml_post, ml_validate, ml_post_description
 DEFAULT_LISTING_TYPE = "gold_special"
 DEFAULT_ESTOQUE = 10
 
-# Medidas de quadril padrão por tamanho (cm) — usadas na criação do size grid
-HIP_MEASURES = {"PP": 82, "P": 86, "M": 90, "G": 94, "GG": 98, "XGG": 102}
+# Atributos de medida por domínio — confirmados via API (POST /catalog/charts).
+# Cada entrada é uma lista de (attr_id, fallback_values_por_tamanho).
+# DRESSES requer ambos HIP e CHEST. Nome do chart não pode conter underscore.
+_HIP  = {"PP": 82, "P": 86, "M": 90, "G": 94, "GG": 98, "XGG": 102}
+_CHEST = {"PP": 40, "P": 44, "M": 48, "G": 52, "GG": 56, "XGG": 60}
+
+DOMAIN_MEASURE: dict[str, list[tuple[str, dict[str, int]]]] = {
+    "LEGGINGS": [("GARMENT_HIP_WIDTH_FROM",  _HIP)],
+    "BLOUSES":  [("GARMENT_CHEST_WIDTH_FROM", _CHEST)],
+    "T_SHIRTS": [("GARMENT_CHEST_WIDTH_FROM", _CHEST)],
+    "DRESSES":  [("GARMENT_CHEST_WIDTH_FROM", _CHEST), ("GARMENT_HIP_WIDTH_FROM", _HIP)],
+    "SKIRTS":   [("GARMENT_HIP_WIDTH_FROM",  _HIP)],
+}
+DEFAULT_MEASURE: list[tuple[str, dict[str, int]]] = [("GARMENT_CHEST_WIDTH_FROM", _CHEST)]
 
 
 class MLPublisherAgent(BaseAgent):
@@ -50,7 +62,11 @@ class MLPublisherAgent(BaseAgent):
         category_id, domain_id = self._predict_category(titulo, access_token)
 
         # Step 2: fetch or create size grid for this domain
-        size_grid_id, size_to_row = self._get_size_grid(domain_id, tamanhos, access_token)
+        medidas_busto: dict[str, int] = input_data.get("medidas_busto", {})
+        medidas_quadril: dict[str, int] = input_data.get("medidas_quadril", {})
+        size_grid_id, size_to_row = self._get_size_grid(
+            domain_id, tamanhos, access_token, medidas_busto, medidas_quadril
+        )
 
         # Step 3: upload all images, grouped by color
         picture_ids_by_color: dict[str, list[str]] = {}
@@ -108,12 +124,17 @@ class MLPublisherAgent(BaseAgent):
         raise RuntimeError("Não foi possível predizer a categoria do produto")
 
     def _get_size_grid(
-        self, domain_id: str, tamanhos: list[str], access_token: str
+        self,
+        domain_id: str,
+        tamanhos: list[str],
+        access_token: str,
+        medidas_busto: dict[str, int],
+        medidas_quadril: dict[str, int],
     ) -> tuple[str | None, dict[str, str]]:
         """Cria um novo size grid para o domínio com os tamanhos do anúncio."""
         if not tamanhos:
             return None, {}
-        return _create_size_grid(domain_id, tamanhos, access_token)
+        return _create_size_grid(domain_id, tamanhos, access_token, medidas_busto, medidas_quadril)
 
     def _upload_images(self, paths: list[str], access_token: str) -> list[str]:
         ids = []
@@ -160,26 +181,44 @@ def _build_size_to_row_map(grid: dict, tamanhos: list[str]) -> dict[str, str]:
 
 
 def _create_size_grid(
-    domain_id: str, tamanhos: list[str], access_token: str
+    domain_id: str,
+    tamanhos: list[str],
+    access_token: str,
+    medidas_busto: dict[str, int],
+    medidas_quadril: dict[str, int],
 ) -> tuple[str, dict[str, str]]:
-    """Cria um size grid no ML para o domínio e tamanhos informados."""
+    """Cria um size grid no ML para o domínio e tamanhos informados.
+
+    Usa os atributos exatos confirmados via API para cada domínio.
+    Nome do chart não pode conter underscore (validação do ML).
+    """
+    measure_specs = DOMAIN_MEASURE.get(domain_id, DEFAULT_MEASURE)
+    user_values = {
+        "GARMENT_CHEST_WIDTH_FROM": medidas_busto,
+        "GARMENT_HIP_WIDTH_FROM": medidas_quadril,
+    }
+
     rows = []
     for size in tamanhos:
-        hip = HIP_MEASURES.get(size, 90)
+        measure_attrs = []
+        for attr_id, fallback in measure_specs:
+            value = user_values[attr_id].get(size) or fallback.get(size, 48)
+            measure_attrs.append({"id": attr_id, "values": [
+                {"name": f"{value} cm", "struct": {"number": value, "unit": "cm"}}
+            ]})
         rows.append({
             "attributes": [
                 {"id": "SIZE", "values": [{"name": size}]},
                 {"id": "FILTRABLE_SIZE", "values": [{"name": size}]},
-                {"id": "GARMENT_HIP_WIDTH_FROM", "values": [
-                    {"name": f"{hip} cm", "struct": {"number": hip, "unit": "cm"}}
-                ]},
+                *measure_attrs,
             ]
         })
 
+    chart_name = f"Grade {'-'.join(tamanhos)}"[:60]  # underscores bloqueados pelo ML
     payload = {
         "site_id": "MLB",
         "domain_id": domain_id,
-        "names": {"MLB": f"Grade {domain_id} {'-'.join(tamanhos)}"},
+        "names": {"MLB": chart_name},
         "measure_type": "CLOTHING_MEASURE",
         "main_attribute_id": "SIZE",
         "attributes": [{"id": "GENDER", "values": [{"id": "339665", "name": "Feminino"}]}],
@@ -187,14 +226,8 @@ def _create_size_grid(
     }
 
     grid = ml_post("/catalog/charts", access_token, json_body=payload)
-    grid_id = grid["id"]
-    size_to_row = {
-        row["id"].split(":")[-1]: f'{grid_id}:{i + 1}'
-        for i, row in enumerate(grid.get("rows", []))
-    }
-    # Montar mapeamento tamanho → row_id
     size_to_row = _build_size_to_row_map(grid, tamanhos)
-    return grid_id, size_to_row
+    return grid["id"], size_to_row
 
 
 def _build_item_json(
