@@ -1,6 +1,7 @@
 # Secrets — nunca commitar
 .env
 .streamlit/secrets.toml
+.ml_tokens.json
 
 # Imagens geradas (temporárias)
 output/

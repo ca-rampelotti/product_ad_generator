@@ -14,20 +14,29 @@ import streamlit as st
 import streamlit.components.v1 as components
 from jinja2 import Environment, FileSystemLoader
 
-# Injeta o segredo do Streamlit Cloud no ambiente antes de importar os módulos do
-# projeto, para que config.py leia GOOGLE_API_KEY corretamente via os.getenv.
+# Injeta segredos do Streamlit Cloud no ambiente antes de importar os módulos do
+# projeto, para que config.py leia as vars corretamente via os.getenv.
 try:
     if "GEMINI_API_KEY" in st.secrets:
         os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+    if "ML_APP_ID" in st.secrets:
+        os.environ["ML_APP_ID"] = st.secrets["ML_APP_ID"]
+    if "ML_SECRET_KEY" in st.secrets:
+        os.environ["ML_SECRET_KEY"] = st.secrets["ML_SECRET_KEY"]
+    if "ML_REDIRECT_URI" in st.secrets:
+        os.environ["ML_REDIRECT_URI"] = st.secrets["ML_REDIRECT_URI"]
 except Exception:
     pass  # fallback: config.py lê do .env local via python-dotenv
 
 from agents.image_generator import ImageGeneratorAgent
+from agents.ml_publisher import MLPublisherAgent
+from config import ML_APP_ID, ML_SECRET_KEY, ML_REDIRECT_URI
 from pipelines.kit_pipeline import KitPipeline, KIT_SLOT_LABELS
 from pipelines.listing_pipeline import ListingPipeline
 from utils.image_gen import generate_image, SLOT_LABELS, SLOT_ZIP_NAMES
 from utils.image_overlay import overlay_objection_text
 from utils.image_renderer import render_html_to_image
+from utils.ml_auth import build_auth_url, get_valid_token, authorize_with_code, revoke_tokens, load_tokens
 from utils.size_table_extractor import extract_size_table
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
@@ -94,6 +103,8 @@ for key, default in [
     ("image_errors", {}),
     ("image_bullets", {}),
     ("kit_results", {}),
+    ("ml_publish_result", None),
+    ("ml_publish_error", ""),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -433,6 +444,204 @@ def _show_variations(listing: dict, inputs: dict) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# DISPLAY: PUBLICAR NO MERCADO LIVRE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _show_ml_publish_tab(listing, inputs: dict) -> None:
+    """Aba de publicação direta no Mercado Livre via API."""
+    if not ML_APP_ID or not ML_SECRET_KEY:
+        st.warning(
+            "Configure `ML_APP_ID` e `ML_SECRET_KEY` no `.env` ou nos secrets do Streamlit "
+            "para habilitar a publicação automática."
+        )
+        return
+
+    # ── Conexão OAuth2 ──
+    _section_header("Conexão com Mercado Livre")
+    token = get_valid_token(ML_APP_ID, ML_SECRET_KEY)
+
+    if token:
+        tokens = load_tokens()
+        import time as _time
+        remaining_h = max(0, (tokens.expires_at - _time.time()) / 3600) if tokens else 0
+        st.success(f"Conta conectada. Token válido por ~{remaining_h:.1f}h.")
+        if st.button("Desconectar conta", key="btn_ml_revoke"):
+            revoke_tokens()
+            st.session_state.ml_publish_result = None
+            st.session_state.ml_publish_error = ""
+            st.rerun()
+    else:
+        auth_url = build_auth_url(ML_APP_ID, ML_REDIRECT_URI)
+        st.info(
+            "Clique no link abaixo para autorizar o app no Mercado Livre. "
+            "Após autorizar, copie o código `code=...` da URL de redirecionamento."
+        )
+        st.markdown(f"[Autorizar no Mercado Livre]({auth_url})")
+        with st.form("ml_auth_form"):
+            code_input = st.text_input(
+                "Cole aqui o código de autorização (ou a URL completa de redirecionamento)",
+                placeholder="TG-... ou https://localhost?code=TG-...",
+            )
+            submitted = st.form_submit_button("Conectar")
+        if submitted and code_input.strip():
+            raw = code_input.strip()
+            # Aceita URL completa ou só o code
+            if "code=" in raw:
+                from urllib.parse import urlparse, parse_qs
+                parsed = parse_qs(urlparse(raw).query)
+                code = parsed.get("code", [raw])[0]
+            else:
+                code = raw
+            try:
+                authorize_with_code(code, ML_APP_ID, ML_SECRET_KEY, ML_REDIRECT_URI)
+                st.success("Conta conectada com sucesso!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Falha na autorização: {e}")
+        return  # sem token, não mostra formulário de publicação
+
+    st.divider()
+
+    # ── Resultado anterior ──
+    if st.session_state.ml_publish_result:
+        r = st.session_state.ml_publish_result
+        st.success(f"Anúncio publicado com sucesso! ID: **{r['item_id']}** — Status: {r['status']}")
+        st.markdown(f"[Ver anúncio no Mercado Livre]({r['permalink']})")
+        if st.button("Publicar outro anúncio", key="btn_ml_clear"):
+            st.session_state.ml_publish_result = None
+            st.session_state.ml_publish_error = ""
+            st.rerun()
+        return
+
+    if st.session_state.ml_publish_error:
+        st.error(f"Erro na publicação: {st.session_state.ml_publish_error}")
+        if st.button("Tentar novamente", key="btn_ml_retry"):
+            st.session_state.ml_publish_error = ""
+            st.rerun()
+
+    # ── Formulário de publicação ──
+    _section_header("Configurações do Anúncio")
+
+    col_price, col_type = st.columns(2)
+    with col_price:
+        preco = st.number_input(
+            "Preço (R$)",
+            min_value=0.01,
+            value=float(inputs.get("preco_desconto") or inputs.get("preco_original") or 0.01),
+            step=0.01,
+            format="%.2f",
+            key="ml_pub_preco",
+        )
+    with col_type:
+        listing_type = st.selectbox(
+            "Tipo de anúncio",
+            options=["gold_special", "gold_pro", "gold"],
+            format_func=lambda x: {"gold_special": "Clássico", "gold_pro": "Premium", "gold": "Ouro"}[x],
+            key="ml_pub_type",
+        )
+
+    # ── Estoque por variação (grade cor × tamanho) ──
+    cores_str = inputs.get("cores", "")
+    cores_list = [c.strip() for c in cores_str.split(",") if c.strip()]
+    tamanhos_list: list[str] = inputs.get("tamanhos", [])
+
+    _section_header("Estoque por Variação")
+    if cores_list and tamanhos_list:
+        estoque_df = pd.DataFrame(
+            {tam: [10] * len(cores_list) for tam in tamanhos_list},
+            index=cores_list,
+        )
+        edited_estoque = st.data_editor(
+            estoque_df,
+            key="ml_pub_estoque_grid",
+            use_container_width=True,
+            column_config={
+                tam: st.column_config.NumberColumn(tam, min_value=0, step=1, format="%d")
+                for tam in tamanhos_list
+            },
+        )
+        # dict[cor][tamanho] = estoque
+        estoque_dict: dict[str, dict[str, int]] = {
+            cor: {tam: int(edited_estoque.loc[cor, tam]) for tam in tamanhos_list}
+            for cor in cores_list
+        }
+    else:
+        estoque_simples = st.number_input(
+            "Estoque total",
+            min_value=1,
+            value=10,
+            step=1,
+            key="ml_pub_estoque_simples",
+        )
+        estoque_dict = {}
+
+    # Montar image_paths_by_color a partir do session_state
+    generated = st.session_state.generated_images  # {color: {slot: path}}
+    image_paths_by_color: dict[str, list[str]] = {}
+    for color, slots_map in generated.items():
+        paths = [p for p in slots_map.values() if p and os.path.exists(p)]
+        if paths:
+            image_paths_by_color[color] = paths
+
+    n_imagens = sum(len(v) for v in image_paths_by_color.values())
+
+    st.caption(
+        f"Serão enviadas **{n_imagens}** imagens · "
+        f"**{len(cores_list)}** cor(es) · "
+        f"**{len(tamanhos_list)}** tamanho(s) · "
+        f"Categoria detectada automaticamente pelo título"
+    )
+
+    publicar = st.button(
+        "Publicar no Mercado Livre",
+        type="primary",
+        use_container_width=True,
+        key="btn_ml_publish",
+    )
+
+    if publicar:
+        titulo = getattr(listing, "titulo", "")
+        descricao = getattr(listing, "descricao", "")
+        skus = getattr(listing, "skus", [])
+
+        if not titulo:
+            st.error("Título não encontrado no anúncio gerado.")
+            return
+
+        estoque_input = estoque_dict if estoque_dict else estoque_simples
+
+        with st.status("Publicando no Mercado Livre...", expanded=True) as status:
+            try:
+                st.write("Predizendo categoria...")
+                agent = MLPublisherAgent()
+
+                st.write(f"Enviando {n_imagens} imagens...")
+                result = agent.run({
+                    "access_token": token,
+                    "titulo": titulo,
+                    "descricao": descricao,
+                    "preco": preco,
+                    "tamanhos": tamanhos_list,
+                    "cores": cores_list,
+                    "skus": skus,
+                    "image_paths_by_color": image_paths_by_color,
+                    "listing_type": listing_type,
+                    "estoque_por_variacao": estoque_input,
+                    "modelo": getattr(listing, "modelo", inputs.get("tipo_peca", "")),
+                })
+
+                st.write(f"✓ Anúncio criado: {result['item_id']}")
+                st.session_state.ml_publish_result = result
+                st.session_state.ml_publish_error = ""
+                status.update(label="Publicado com sucesso!", state="complete", expanded=False)
+            except Exception as e:
+                st.session_state.ml_publish_error = str(e)
+                status.update(label="Falha na publicação", state="error", expanded=True)
+
+        st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # PIPELINE ONE-SHOT
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -754,6 +963,8 @@ with tab_simple:
         st.session_state.image_bullets = {}
         st.session_state.size_table_data = None
         st.session_state.size_table_image = None
+        st.session_state.ml_publish_result = None
+        st.session_state.ml_publish_error = ""
 
         imagens_por_cor: dict[str, list[str]] = {
             cor: [base64.b64encode(f.read()).decode("utf-8") for f in arquivos]
@@ -805,6 +1016,8 @@ with tab_simple:
             result_tab_names.append("Variações")
         elif any(st.session_state.imagens_por_cor.values()):
             result_tab_names.append("Variações")
+        if listing.get("ml"):
+            result_tab_names.append("Publicar no ML")
 
         if result_tab_names:
             st.divider()
@@ -822,6 +1035,10 @@ with tab_simple:
             if "Variações" in result_tab_map:
                 with result_tab_map["Variações"]:
                     _show_variations(listing, inputs)
+
+            if "Publicar no ML" in result_tab_map:
+                with result_tab_map["Publicar no ML"]:
+                    _show_ml_publish_tab(listing.get("ml"), inputs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

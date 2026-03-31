@@ -5,6 +5,7 @@ class ListingOutputML(BaseModel):
     titulo: str
     palavras_chave: str
     modelo_keywords: str
+    modelo: str
     esportes_recomendados: list[str]
     descricao: str
     skus: list[str]

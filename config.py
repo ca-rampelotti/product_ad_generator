@@ -13,3 +13,7 @@ GEMINI_MODEL: str = "gemini-2.5-flash"
 GEMINI_IMAGE_MODEL: str = "gemini-2.5-flash-image"
 TEMPERATURE: float = 0
 MAX_TOKENS: int = 4096
+
+ML_APP_ID: str = os.getenv("ML_APP_ID", "")
+ML_SECRET_KEY: str = os.getenv("ML_SECRET_KEY", "")
+ML_REDIRECT_URI: str = os.getenv("ML_REDIRECT_URI", "https://localhost")
