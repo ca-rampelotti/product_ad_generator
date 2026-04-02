@@ -1,4 +1,5 @@
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 
@@ -137,10 +138,9 @@ class MLPublisherAgent(BaseAgent):
         return _create_size_grid(domain_id, tamanhos, access_token, medidas_busto, medidas_quadril)
 
     def _upload_images(self, paths: list[str], access_token: str) -> list[str]:
-        ids = []
-        for path in paths:
+        def upload_one(path: str) -> str | None:
             if not Path(path).exists():
-                continue
+                return None
             with open(path, "rb") as f:
                 data = f.read()
             response = ml_post(
@@ -148,9 +148,11 @@ class MLPublisherAgent(BaseAgent):
                 access_token,
                 files={"file": (Path(path).name, data, "image/png")},
             )
-            if "id" in response:
-                ids.append(response["id"])
-        return ids
+            return response.get("id")
+
+        with ThreadPoolExecutor() as executor:
+            results = executor.map(upload_one, paths)
+        return [r for r in results if r is not None]
 
     # BaseAgent interface — não utilizado (sem LLM neste agente)
     def _build_prompt(self, input_data: dict) -> str:
